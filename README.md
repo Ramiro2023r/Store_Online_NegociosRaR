@@ -2,6 +2,8 @@
 
 Proyecto completo de e-commerce con módulo de **tienda online** y **panel administrativo**, construido en Laravel 13 con base de datos PostgreSQL.
 <img width="1915" height="877" alt="image" src="https://github.com/user-attachments/assets/ba75ff11-de9f-4cbe-b9a0-008f4628ec72" />
+<img width="1907" height="871" alt="image" src="https://github.com/user-attachments/assets/801c7c60-7f9d-4322-a0ec-3bf85e05e39c" />
+
 
 
 ## ✅ Qué incluye
