@@ -30,6 +30,11 @@
 
     <div class="space-y-6">
         <div class="bg-white border rounded-xl p-6">
+            <h3 class="font-bold mb-3">Línea de tiempo</h3>
+            @include('partials.order-timeline')
+        </div>
+
+        <div class="bg-white border rounded-xl p-6">
             <h3 class="font-bold mb-3">Cliente</h3>
             <p class="text-sm">{{ $order->user->name }}</p>
             <p class="text-sm text-gray-500">{{ $order->user->email }}</p>

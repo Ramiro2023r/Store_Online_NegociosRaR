@@ -24,6 +24,13 @@
         @endif
     </div>
     <div class="p-3">
+        <form action="{{ route('compare.toggle', $product) }}" method="POST" class="mb-1" @click.stop>
+            @csrf
+            <button class="text-xs text-rar-600 hover:underline flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                Comparar
+            </button>
+        </form>
         <div class="text-xs text-gray-400">{{ $product->brand }}</div>
         <h3 class="text-sm font-semibold line-clamp-2 h-10">{{ $product->name }}</h3>
         @php

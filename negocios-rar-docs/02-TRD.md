@@ -1,7 +1,7 @@
 # TRD — Technical Requirements Document
 ## Negocios RaR — Plataforma de Tienda Virtual
 
-**Versión:** 1.3
+**Versión:** 1.4
 **Última actualización:** julio 2026
 
 ---
@@ -55,6 +55,17 @@ No hay API REST/GraphQL separada en el MVP: todo se sirve mediante rutas web con
 | `wishlists` | Lista de deseos de clientes — relación N:N entre users y products con índice único |
 | `coupons` | Cupones de descuento promocionales con reglas de aplicación (tipo, valor, categoría, fechas, límites) |
 | `coupon_uses` | Registro de uso de cupones por pedido (para control de límites por usuario) |
+| `banners` | Slides del carrusel del home (imagen opcional, gradiente, texto, orden, activo) |
+| `benefits` | Íconos/beneficios del home (emoji, título, orden) |
+| `settings` | Configuración clave-valor (envío, footer, acerca de, títulos del home, info de envío/devoluciones) |
+| `faqs` | Preguntas frecuentes (question, answer, category, sort_order) |
+| `addresses` | Direcciones guardadas por cliente (label, address, city, phone, is_default) |
+| `order_statuses` | Historial de cambios de estado del pedido (order_id, status, timestamps) |
+| `newsletters` | Suscriptores a novedades (email unique, name, active) |
+| `loyalty_transactions` | Movimientos de puntos fidelización (user_id, order_id nullable, type: earned|redeemed|adjusted, points, description) |
+| `social_accounts` | Cuentas vinculadas OAuth (user_id, provider, provider_id, avatar) |
+| `users` — permite `password` null | Los usuarios registrados vía OAuth no tienen contraseña local |
+| `users.loyalty_points`, `users.lifetime_points` | Saldo actual y puntos ganados acumulados |
 | `carts` / `cart_items` | Carrito de compras (asociado a `user_id` o `session_id` para invitados) |
 | `orders` / `order_items` | Pedidos y sus líneas de detalle (snapshot de precio/nombre al momento de compra) |
 | `conversations` / `messages` | Hilos de chat de soporte por cliente |
@@ -80,7 +91,8 @@ id, name, slug (unique), icon, description, active, timestamps
 id, category_id (FK), name, slug (unique), description, price (decimal 10,2),
 compare_price (decimal 10,2, nullable — precio tachado), sku (unique, nullable),
 stock (int), brand, attributes (json — pares clave-valor libres),
-main_image, featured (bool), active (bool), rating (decimal 3,2), timestamps
+main_image, featured (bool), active (bool), meta_title (string 70 nullable),
+meta_description (text nullable), rating (decimal 3,2), timestamps
 ```
 
 **product_images**
@@ -137,6 +149,9 @@ payment_status (pendiente|pagado|fallido), paid_at (timestamp nullable), timesta
 order_items: id, order_id (FK), product_id (FK nullable — se conserva el pedido
 aunque el producto se elimine), product_name (snapshot), unit_price (snapshot),
 quantity, total, timestamps
+
+order_statuses: id, order_id (FK), status, timestamps (registro inmutable de cambios
+de estado para la línea de tiempo visual)
 ```
 
 **conversations / messages**
@@ -146,17 +161,53 @@ messages: id, conversation_id (FK), user_id (FK — quien envía), is_staff (boo
 body, read (bool), timestamps
 ```
 
+**settings**
+```
+id, key (unique), value (text nullable), timestamps
+```
+Se insertan 27 valores por defecto en las migraciones: top_bar_text, footer_description/address/phone/email, shipping_min_amount/cost, about_mission/vision/values/about_subtitle/clients_count/products_count/regions_count/rating, home_title_categories/featured/newest, store_logo/logo_icon/ruc/business_name/address/phone/email, abandoned_delay_hours, abandoned_cart_subject.
+
+**banners**
+```
+id, title, subtitle (nullable), button_text (nullable), button_url (nullable),
+image (nullable — ruta en storage), gradient_from (default 'from-rar-700'),
+gradient_to (default 'to-rar-500'), text_color (default 'text-white'),
+sort_order (tinyint default 0), active (boolean default true), timestamps
+```
+
+**benefits**
+```
+id, icon (string — emoji), title, sort_order (tinyint default 0),
+active (boolean default true), timestamps
+```
+
+**faqs**
+```
+id, question (string), answer (text), category (string — envio|pago|devolucion|general),
+sort_order (tinyint default 0), active (boolean default true), timestamps
+```
+
+**addresses**
+```
+id, user_id (FK), label (string — Casa|Trabajo|Otro), address (string),
+city (string nullable), phone (string nullable), is_default (boolean default false), timestamps
+```
+
 ### 3.3 Relaciones (resumen Eloquent)
 
-- `User` 1—N `Order`, 1—N `Conversation`, 1—N `Wishlist`
+- `User` 1—N `Order`, 1—N `Conversation`, 1—N `Wishlist`, 1—N `Address`
 - `Category` 1—N `Product`
 - `Product` 1—N `ProductImage`; `Product` 1—N `Review`; `User` 1—N `Review`
 - `Cart` 1—N `CartItem`; `CartItem` N—1 `Product`
 - `Wishlist` N—1 `User` y N—1 `Product` (tabla pivot con user_id + product_id unique)
 - `Coupon` N—1 `Category` (nullable); `Coupon` 1—N `CouponUse`
 - `CouponUse` N—1 `Coupon`, N—1 `User`, N—1 `Order`
-- `Order` 1—N `OrderItem`; `OrderItem` N—1 `Product` (nullable)
+- `Order` 1—N `OrderItem`, 1—N `OrderStatus`; `OrderItem` N—1 `Product` (nullable)
 - `Conversation` 1—N `Message`
+- `Setting`, `Banner`, `Benefit`, `Faq` — entidades independientes (sin FK a otras tablas)
+- `User` 1—N `LoyaltyTransaction` (points history); `LoyaltyTransaction` N—1 `Order` (nullable)
+- `SitemapController` — genera `/sitemap.xml` con páginas estáticas + categorías + productos activos
+- `LoyaltyController` — página `/mis-puntos` con saldo e historial de transacciones
 
 ### 3.4 Motor de base de datos
 
@@ -193,11 +244,11 @@ PostgreSQL. Puntos específicos del driver usados en el código:
 
 | Bloque | Prefijo | Middleware | Ejemplos |
 |---|---|---|---|
-| Público | `/` | — | `/`, `/productos`, `/productos/{slug}`, `/acerca-de` |
+| Público | `/` | — | `/`, `/productos`, `/productos/{slug}`, `/sitemap.xml`, `/acerca-de`, `/buscar/sugerencias`, `/comparar`, `/comparar/{product}`, `/comparar/limpiar`, `/auth/{provider}/redirect`, `/auth/{provider}/callback`, `/envio-y-devoluciones` |
 | Carrito | `/carrito` | — (funciona con invitados vía `session_id`) | agregar, actualizar, eliminar ítem |
 | Auth | `/login`, `/registro`, `/olvide-password`, `/reset-password` | `guest` | — |
-| Cliente autenticado | `/checkout`, `/mis-pedidos`, `/contactanos`, `/productos/*/resenas`, `/mi-lista-de-deseos`, `/lista-de-deseos/*`, `/checkout/aplicar-cupon`, `/checkout/quitar-cupon` | `auth` | crear/eliminar reseña, toggle/ver wishlist, aplicar/quitar cupón (AJAX) |
-| Admin | `/admin/*` | `auth`, `role:admin,trabajador` | dashboard, productos, categorías, pedidos, mensajes, reseñas, cupones |
+| Cliente autenticado | `/checkout`, `/mis-pedidos`, `/mis-pedidos/{order}`, `/mis-puntos`, `/mis-direcciones`, `/contactanos`, `/contactanos/mensajes`, `/productos/*/resenas`, `/mi-lista-de-deseos`, `/lista-de-deseos/*`, `/checkout/aplicar-cupon`, `/checkout/quitar-cupon` | `auth` | crear/eliminar reseña, toggle/ver wishlist, gestionar direcciones, canjear puntos, aplicar/quitar cupón (AJAX), ver timeline del pedido, chat tiempo real (polling 3s) |
+| Admin | `/admin/*` | `auth`, `role:admin,trabajador` | dashboard, productos, categorías, pedidos, mensajes (con JSON polling), reseñas, cupones, newsletter, banners, beneficios, faqs, settings |
 | Admin — usuarios | `/admin/users/*` | `auth`, `role:admin` | CRUD de usuarios y roles |
 
 Ver `routes/web.php` como fuente de verdad; este documento resume, no reemplaza el código.
@@ -238,6 +289,9 @@ MAIL_MAILER=log   (cambiar a smtp real para envío de correos de recuperación d
 - `ReviewSeeder`: reseñas demo (1-3 reseñas aprobadas por producto, generadas con `ReviewFactory`).
 - `WishlistSeeder`: — no incluida en MVP (los registros se crean dinámicamente cuando los clientes guardan productos). El dashboard admin expone "Productos más deseados" consultando la tabla `wishlists` directamente.
 - `CouponSeeder`: — no incluido en MVP (los cupones se crean desde el panel admin). Se recomienda crear un seeder para datos demo si se requiere población inicial de prueba.
+- `SiteSeeder`: 3 banners demo + 4 beneficios demo. Se ejecuta automáticamente con `php artisan migrate --seed`.
+- **FAQ:** 6 preguntas frecuentes demo insertadas en la migración `create_faqs_table`. Se administran desde el panel admin → Configuración de tienda → FAQ / Ayuda.
+- **Recuperación de carrito abandonado:** comando `rar:send-abandoned-carts` programado cada hora via scheduler (`routes/console.php`). Envía `AbandonedCartMail` con lista de productos y CTA a recuperar carrito. Configurable desde panel admin → Configuración general (horas de abandono y asunto del correo). Requiere worker de cola (`php artisan queue:work`).
 
 ---
 

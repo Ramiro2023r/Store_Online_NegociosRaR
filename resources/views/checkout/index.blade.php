@@ -15,28 +15,71 @@
 
         <div class="lg:col-span-2 space-y-6">
             <div class="bg-white border rounded-xl p-6">
-                <h3 class="font-bold mb-4">Datos de envío</h3>
-                <div class="space-y-4">
-                    <div>
-                        <label class="text-sm font-medium">Dirección de envío</label>
-                        <input type="text" name="shipping_address" value="{{ old('shipping_address', auth()->user()->address) }}" required class="w-full border rounded-lg px-3 py-2 mt-1">
-                        @error('shipping_address')<p class="text-red-500 text-xs mt-1">{{ $message }}</p>@enderror
+                <h3 class="font-bold mb-4">📍 Dirección de envío</h3>
+
+                @if($addresses->count())
+                    <div class="space-y-2 mb-4" x-data="{ selected: {{ old('address_id', $addresses->where('is_default', true)->first()?->id ?? $addresses->first()->id) }} }">
+                        @foreach($addresses as $addr)
+                            <label class="flex items-start gap-3 border rounded-lg p-3 cursor-pointer hover:bg-gray-50 {{ old('address_id') == $addr->id || (!$loop->first && !old('address_id') && $addr->is_default) || ($loop->first && !old('address_id') && !$addresses->where('is_default', true)->first()) ? 'ring-2 ring-rar-500' : '' }}">
+                                <input type="radio" name="address_id" value="{{ $addr->id }}" @checked(old('address_id', $addresses->where('is_default', true)->first()?->id ?? $addresses->first()->id) == $addr->id) @change="selected = {{ $addr->id }}" class="mt-1">
+                                <div class="text-sm">
+                                    <span class="font-semibold text-xs bg-gray-100 px-2 py-0.5 rounded">{{ $addr->label }}</span>
+                                    @if($addr->is_default) <span class="text-xs text-rar-600">Principal</span> @endif
+                                    <p class="mt-1">{{ $addr->address }}</p>
+                                    @if($addr->city)<p class="text-xs text-gray-500">{{ $addr->city }}</p>@endif
+                                    @if($addr->phone)<p class="text-xs text-gray-500">📞 {{ $addr->phone }}</p>@endif
+                                </div>
+                            </label>
+                        @endforeach
+                        <p class="text-xs text-gray-400 mt-1">
+                            <a href="{{ route('addresses.index') }}" class="text-rar-600 hover:underline">Gestionar direcciones</a>
+                        </p>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-sm font-medium">Ciudad</label>
-                            <input type="text" name="shipping_city" value="{{ old('shipping_city') }}" class="w-full border rounded-lg px-3 py-2 mt-1">
+                @else
+                    <p class="text-sm text-gray-400 mb-3">No tienes direcciones guardadas.</p>
+                @endif
+
+                <div x-data="{ showForm: {{ $addresses->count() ? 'false' : 'true' }} }">
+                    <button type="button" @click="showForm = !showForm" class="text-sm text-rar-600 hover:underline mb-3" x-show="{{ $addresses->count() ? 'true' : 'false' }}">
+                        <span x-show="!showForm">+ Usar una dirección nueva</span>
+                        <span x-show="showForm">- Usar dirección guardada</span>
+                    </button>
+
+                    <div x-show="showForm" class="space-y-4">
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-sm font-medium">Etiqueta</label>
+                                <select name="new_address_label" class="w-full border rounded-lg px-3 py-2 mt-1 text-sm">
+                                    <option value="Casa">Casa</option>
+                                    <option value="Trabajo">Trabajo</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="text-sm font-medium">Dirección</label>
+                                <input type="text" name="new_address" value="{{ old('new_address') }}" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
                         </div>
-                        <div>
-                            <label class="text-sm font-medium">Teléfono</label>
-                            <input type="text" name="shipping_phone" value="{{ old('shipping_phone', auth()->user()->phone) }}" required class="w-full border rounded-lg px-3 py-2 mt-1">
-                            @error('shipping_phone')<p class="text-red-500 text-xs mt-1">{{ $message }}</p>@enderror
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-sm font-medium">Ciudad</label>
+                                <input type="text" name="new_city" value="{{ old('new_city') }}" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Teléfono</label>
+                                <input type="text" name="new_phone" value="{{ old('new_phone', auth()->user()->phone) }}" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="save_address" id="save_address" value="1" checked class="rounded">
+                            <label for="save_address">Guardar dirección para futuras compras</label>
                         </div>
                     </div>
-                    <div>
-                        <label class="text-sm font-medium">Notas (opcional)</label>
-                        <textarea name="notes" rows="2" class="w-full border rounded-lg px-3 py-2 mt-1">{{ old('notes') }}</textarea>
-                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="text-sm font-medium">Notas (opcional)</label>
+                    <textarea name="notes" rows="2" class="w-full border rounded-lg px-3 py-2 mt-1">{{ old('notes') }}</textarea>
                 </div>
             </div>
 
@@ -70,10 +113,30 @@
                 <div id="coupon-message" class="text-xs mt-1"></div>
             </div>
 
+            @if($pointsBalance >= $minPoints)
+                <div class="mb-4 pb-4 border-b" x-data="{ redeemPoints: false }">
+                    <label class="flex items-start gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" name="redeem_points" value="1" class="mt-0.5 rounded" x-model="redeemPoints">
+                        <div>
+                            <span class="font-medium">⭐ Canjear puntos</span>
+                            <p class="text-xs text-gray-400">
+                                Tienes <strong>{{ number_format($pointsBalance) }} pts</strong> — 
+                                valor: <strong>S/ {{ number_format($pointsBalance * $redeemRate, 2) }}</strong>
+                                (mín. {{ $minPoints }} pts)
+                            </p>
+                        </div>
+                    </label>
+                </div>
+            @endif
+
             <div class="space-y-2 max-h-64 overflow-y-auto mb-4">
                 @foreach($cart->items as $item)
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">{{ $item->quantity }}x {{ Str::limit($item->product->name, 25) }}</span>
+                        <span class="text-gray-600">{{ $item->quantity }}x {{ Str::limit($item->product->name, 25) }}
+                            @if($item->variant)
+                                <span class="text-xs text-gray-400">({{ $item->variant->size ?? '' }}{{ $item->variant->size && $item->variant->color ? ' / ' : '' }}{{ $item->variant->color ?? '' }})</span>
+                            @endif
+                        </span>
                         <span class="font-medium">S/ {{ number_format($item->unit_price * $item->quantity, 2) }}</span>
                     </div>
                 @endforeach

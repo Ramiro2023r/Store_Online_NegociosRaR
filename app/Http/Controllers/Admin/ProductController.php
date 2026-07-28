@@ -70,6 +70,17 @@ class ProductController extends Controller
 
         $product->update($data);
 
+        if ($request->hasFile('gallery')) {
+            $product->images()->delete();
+            foreach ($request->file('gallery') as $i => $file) {
+                ProductImage::create([
+                    'product_id' => $product->id,
+                    'path' => $file->store('products', 'public'),
+                    'sort_order' => $i,
+                ]);
+            }
+        }
+
         return redirect()->route('admin.products.index')->with('success', 'Producto actualizado correctamente.');
     }
 
@@ -92,9 +103,12 @@ class ProductController extends Controller
             'stock' => 'required|integer|min:0',
             'brand' => 'nullable|string|max:100',
             'main_image' => 'nullable|image|max:4096',
+            'video_url' => 'nullable|string|max:500',
             'gallery.*' => 'nullable|image|max:4096',
             'featured' => 'nullable|boolean',
             'active' => 'nullable|boolean',
+            'meta_title' => 'nullable|string|max:70',
+            'meta_description' => 'nullable|string|max:160',
         ]) + [
             'featured' => $request->boolean('featured'),
             'active' => $request->boolean('active', true),

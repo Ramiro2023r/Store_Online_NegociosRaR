@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\Coupon;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 
 class CouponController extends Controller
@@ -52,7 +53,9 @@ class CouponController extends Controller
         }
 
         $discount = $coupon->calculateDiscount($subtotal, $cart->items);
-        $shipping = $subtotal >= 200 ? 0 : 15;
+        $minFree = (float) Setting::getValue('shipping_min_amount', 200);
+        $shipCost = (float) Setting::getValue('shipping_cost', 15);
+        $shipping = $subtotal >= $minFree ? 0 : $shipCost;
         $newTotal = $subtotal + $shipping - $discount;
 
         session(['applied_coupon' => $coupon->id]);
@@ -73,7 +76,9 @@ class CouponController extends Controller
 
         $cart = Cart::where('user_id', $request->user()->id)->with('items.product')->first();
         $subtotal = $cart ? $cart->items->sum(fn ($i) => $i->unit_price * $i->quantity) : 0;
-        $shipping = $subtotal >= 200 ? 0 : 15;
+        $minFree = (float) Setting::getValue('shipping_min_amount', 200);
+        $shipCost = (float) Setting::getValue('shipping_cost', 15);
+        $shipping = $subtotal >= $minFree ? 0 : $shipCost;
         $total = $subtotal + $shipping;
 
         return response()->json([

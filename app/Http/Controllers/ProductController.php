@@ -12,7 +12,14 @@ class ProductController extends Controller
         $query = Product::with('category')->where('active', true);
 
         if ($request->filled('q')) {
-            $query->where('name', 'ilike', '%'.$request->q.'%');
+            $q = $request->q;
+            $query->where(function ($sub) use ($q) {
+                $sub->where('name', 'ilike', '%' . $q . '%')
+                    ->orWhereRaw('similarity(name, ?) > 0.25', [$q])
+                    ->orWhereRaw('similarity(COALESCE(brand, \'\'), ?) > 0.3', [$q]);
+            })
+            ->orderByRaw('CASE WHEN name ilike ? THEN 0 ELSE 1 END', [$q . '%'])
+            ->orderByRaw('similarity(name, ?) DESC', [$q]);
         }
 
         if ($request->filled('category')) {
@@ -57,6 +64,7 @@ class ProductController extends Controller
     public function show(Product $product)
     {
         abort_unless($product->active, 404);
+        $product->load('images', 'activeVariants');
         $related = Product::where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
             ->where('active', true)

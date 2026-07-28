@@ -26,6 +26,10 @@ class AppServiceProvider extends ServiceProvider
                 $cart = Cart::where('session_id', session('cart_session_id'))->whereNull('user_id')->first();
             }
 
+            if ($cart) {
+                $cart->touchLastActive();
+            }
+
             $view->with('cartCount', $cart ? $cart->items()->sum('quantity') : 0);
 
             $wishlistCount = 0;
@@ -33,6 +37,9 @@ class AppServiceProvider extends ServiceProvider
                 $wishlistCount = Wishlist::where('user_id', Auth::id())->count();
             }
             $view->with('wishlistCount', $wishlistCount);
+
+            $pointsBalance = Auth::check() ? Auth::user()->loyalty_points : 0;
+            $view->with('pointsBalance', $pointsBalance);
         });
     }
 }

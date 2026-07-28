@@ -26,17 +26,27 @@
     </div>
 </div>
 
+@php
+    $needsRestockCount = \App\Models\Product::where('stock', '>', 0)->whereRaw('stock <= min_stock')->count();
+    $outOfStockCount = \App\Models\Product::where('stock', '<=', 0)->where('active', true)->count();
+@endphp
+@if($needsRestockCount > 0)
+    <div class="bg-cobre-50 border border-cobre-200 text-cobre-800 text-sm rounded-lg px-4 py-3 mb-6">
+        📦 Tienes <strong>{{ $needsRestockCount }}</strong> producto(s) que requieren reabastecimiento.
+        <a href="{{ route('admin.inventory.index', ['alert' => 'low']) }}" class="underline font-semibold">Ver inventario</a>
+    </div>
+@endif
+@if($outOfStockCount > 0)
+    <div class="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg px-4 py-3 mb-6">
+        ⚠️ Hay <strong>{{ $outOfStockCount }}</strong> producto(s) agotados.
+        <a href="{{ route('admin.inventory.index', ['alert' => 'out']) }}" class="underline font-semibold">Ver agotados</a>
+    </div>
+@endif
+
 @if($reviewsPendientes > 0)
     <div class="bg-cobre-50 border border-cobre-200 text-cobre-800 text-sm rounded-lg px-4 py-3 mb-6">
         ⭐ Tienes <strong>{{ $reviewsPendientes }}</strong> reseña(s) pendiente(s) de aprobación.
         <a href="{{ route('admin.reviews.index') }}" class="underline font-semibold">Revisar reseñas</a>
-    </div>
-@endif
-
-@if($stockBajo > 0)
-    <div class="bg-cobre-50 border border-cobre-200 text-cobre-800 text-sm rounded-lg px-4 py-3 mb-6">
-        ⚠️ Tienes {{ $stockBajo }} producto(s) con stock bajo (5 unidades o menos).
-        <a href="{{ route('admin.products.index') }}" class="underline font-semibold">Revisar productos</a>
     </div>
 @endif
 

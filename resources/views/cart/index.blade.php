@@ -25,11 +25,17 @@
                         </div>
                         <div class="flex-1">
                             <a href="{{ route('products.show', $item->product) }}" class="font-semibold text-sm hover:text-rar-600">{{ $item->product->name }}</a>
+                            @if($item->variant)
+                                <div class="text-xs text-gray-400 mt-0.5">
+                                    {{ $item->variant->size ?? '' }} {{ $item->variant->color ?? '' }}
+                                </div>
+                            @endif
                             <div class="text-rar-600 font-bold mt-1">S/ {{ number_format($item->unit_price,2) }}</div>
                         </div>
                         <form action="{{ route('cart.update', $item) }}" method="POST" class="flex items-center gap-1">
                             @csrf @method('PATCH')
-                            <input type="number" name="quantity" value="{{ $item->quantity }}" min="1" max="{{ $item->product->stock }}" class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm" onchange="this.form.submit()">
+                            @php $maxStock = $item->variant?->stock ?? $item->product->stock; @endphp
+                            <input type="number" name="quantity" value="{{ $item->quantity }}" min="1" max="{{ $maxStock }}" class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm" onchange="this.form.submit()">
                         </form>
                         <div class="font-bold w-24 text-right">S/ {{ number_format($item->unit_price * $item->quantity, 2) }}</div>
                         <form action="{{ route('cart.remove', $item) }}" method="POST">

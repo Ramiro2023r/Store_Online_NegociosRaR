@@ -12,7 +12,7 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password', 'role', 'phone', 'address', 'active', 'accepted_terms_at', 'accepted_terms_version'];
+    protected $fillable = ['name', 'email', 'password', 'role', 'phone', 'address', 'active', 'loyalty_points', 'lifetime_points', 'accepted_terms_at', 'accepted_terms_version'];
 
     protected $hidden = ['password', 'remember_token'];
 
@@ -54,6 +54,21 @@ class User extends Authenticatable
     public function wishlists()
     {
         return $this->hasMany(Wishlist::class);
+    }
+
+    public function addresses()
+    {
+        return $this->hasMany(Address::class);
+    }
+
+    public function socialAccounts()
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+
+    public function loyaltyTransactions()
+    {
+        return $this->hasMany(LoyaltyTransaction::class)->latest();
     }
 
     public function hasInWishlist(Product $product): bool

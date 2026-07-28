@@ -10,7 +10,7 @@
     @else
         <div class="space-y-3">
             @foreach($orders as $order)
-                <div class="bg-white border rounded-xl p-4 flex items-center justify-between">
+                <a href="{{ route('checkout.show', $order) }}" class="block bg-white border rounded-xl p-4 flex items-center justify-between hover:shadow-md transition">
                     <div>
                         <div class="font-semibold">#{{ $order->order_number }}</div>
                         <div class="text-xs text-gray-400">{{ $order->created_at->format('d/m/Y H:i') }}</div>
@@ -20,7 +20,7 @@
                         {{ $order->statusLabel() }}
                     </div>
                     <div class="font-bold text-rar-600">S/ {{ number_format($order->total,2) }}</div>
-                </div>
+                </a>
             @endforeach
         </div>
         <div class="mt-6">{{ $orders->links() }}</div>

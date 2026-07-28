@@ -1,7 +1,7 @@
 # Contexto para IA — Reglas Obligatorias Antes de Modificar el Sistema
 ## Negocios RaR — Plataforma de Tienda Virtual
 
-**Versión:** 1.2
+**Versión:** 2.7
 **Última actualización:** julio 2026
 **Propósito:** este documento debe darse como contexto a cualquier IA (Claude, ChatGPT, Copilot, etc.) o desarrollador antes de pedirle que agregue o modifique algo en este sistema. Resume el estado real del código, sus decisiones de diseño y sus límites conocidos, para evitar que una IA "reinvente" algo ya resuelto o rompa algo que parece no estar conectado a simple vista.
 
@@ -15,6 +15,7 @@
 4. **El proyecto corre con Tailwind vía CDN, sin build de Vite/npm.** No agregues dependencias de frontend que requieran compilación a menos que el usuario acepte explícitamente pasar a un pipeline con `npm run build`.
 5. **PostgreSQL, no MySQL.** Cuidado con sintaxis SQL que no sea compatible (ej. usar `ilike` en vez de `like` para búsquedas insensibles a mayúsculas; no asumir `AUTO_INCREMENT`, Postgres usa `SERIAL`/`IDENTITY` vía Eloquent sin que tengas que tocarlo).
 6. **PHP 8.2 / Laravel 12.** No uses sintaxis o features exclusivas de PHP 8.3+ o Laravel 13+ (por ejemplo, no uses atributos `#[Fillable]`/`#[Hidden]` de Eloquent — este proyecto usa `protected $fillable` clásico, ya que Laravel 12 no reconoce esos atributos correctamente con el autoload actual).
+7. **PostgreSQL requiere extensión `pg_trgm`.** La migración `2026_07_28_000011_create_search_indexes` ejecuta `CREATE EXTENSION IF NOT EXISTS pg_trgm`. El usuario `postgres` necesita permiso para crear extensiones. Si no está disponible, la migración fallará. En entornos compartidos (hosting) puede requerir solicitar la activación manual de `pg_trgm` al proveedor.
 
 ---
 
@@ -29,13 +30,16 @@ Repasa esta lista **antes** de asumir que algo "falta" o está roto — puede qu
 | Campo `users.active` no bloquea login | Existe la columna pero `LoginController` no la verifica | Un admin puede "desactivar" a alguien y esa persona igual podría iniciar sesión |
 | Sin pasarela de pago real | El checkout guarda el método de pago como texto, no procesa cobro | No hay dinero real moviéndose por el sistema todavía |
 | Sin notificaciones automáticas | ~~Cambiar el estado de un pedido no avisa al cliente por correo/SMS~~ ✅ Implementado envío por correo. SMS pendiente. | El cliente debe entrar manualmente a "Mis pedidos" para enterarse |
-| Chat sin tiempo real | Ni cliente ni staff ven mensajes nuevos sin recargar la página | Experiencia de chat "lenta" comparada con WhatsApp/Messenger |
-| Envío gratis y costo de envío hardcodeados | `subtotal >= 200 ? 0 : 15` está escrito directo en `CheckoutController`, no es configurable desde el panel | Cambiar la política de envío requiere tocar código, no hay UI para eso |
+| ~~Chat sin tiempo real~~ | ✅ **Resuelto.** Cliente y admin usan Alpine.js con polling cada 3s + envío AJAX. Sin recarga de página. Ver `ContactController`, `Admin\MessageController`, `contact.blade.php`, `admin/messages/show.blade.php` | — |
+| ~~Envío gratis y costo de envío hardcodeados~~ | ✅ **Resuelto.** `shipping_min_amount` y `shipping_cost` ahora se leen de la tabla `settings`, editables desde el panel admin → Configuración general. Ver `BACKEND.md` sección 3.14 | — |
 | `category_id` en productos usa `cascadeOnDelete` | Borrar una categoría borra todos sus productos | Riesgo operativo alto si un admin borra una categoría por error |
 | `orders.user_id` usa `cascadeOnDelete` | Borrar un usuario borra su historial de pedidos | Pérdida de datos de ventas si se elimina un cliente |
 | Sin verificación de email obligatoria | Un usuario puede comprar con un correo no verificado | Riesgo de correos falsos/typos sin detectar |
 | Panel admin no es responsive | Sidebar fijo de 256px asume escritorio | No usable cómodamente desde celular |
 | Sin rate limiting afinado en login/registro | Solo el throttle básico por defecto de Laravel | Vulnerable a fuerza bruta si no se refuerza en producción |
+| ~~Reportes exportables~~ | ✅ **Resuelto.** `Admin\ReportController` con vista `admin/reports/index.blade.php` muestra ventas por período/categoría/producto con filtro de fechas y exportación CSV. Rutas `admin.reports.index` y `admin.reports.export`. Sin dependencias externas (CSV nativo con BOM UTF-8). | — |
+| ~~Gestión de inventario~~ | ✅ **Resuelto.** Migraciones: `min_stock`/`restock_quantity` en products, `product_variants` (talla+color con stock/precio propio), `stock_movements` (traza completa), `variant_id` en order_items y cart_items. Modelos `ProductVariant`, `StockMovement`. Servicio `StockService` registra movimientos automáticos al vender/reabastecer/ajustar. Admin: gestión de variantes, historial de movimientos con filtros, alertas de reabastecimiento en dashboard e inventario. Frontend: selectores dinámicos talla/color en producto con precio y stock en vivo. | — |
+| ~~Multi-imagen con zoom y video~~ | ✅ **Resuelto.** Migración `video_url` en products. Galería con thumbnails clickables (Alpine.js), zoom al pasar mouse con lupa + vista ampliada a la derecha (CSS `background-size` + `transform`). Soporte de video YouTube/Vimeo/MP4 con overlay y autoplay. Admin: campo `video_url` en el formulario de producto. | — |
 
 **Regla para la IA:** si el usuario pide una feature que toca una de estas áreas, avísale explícitamente que estás resolviendo también una deuda técnica conocida (no lo hagas en silencio), y confirma el alcance antes de tocar relaciones de base de datos con `cascadeOnDelete` — un cambio ahí puede ser irreversible sobre datos reales.
 

@@ -1,7 +1,7 @@
 # Documento de Backend
 ## Negocios RaR — Plataforma de Tienda Virtual
 
-**Versión:** 1.4
+**Versión:** 1.5
 **Última actualización:** julio 2026
 
 Este documento detalla la implementación del backend a nivel de código: estructura de carpetas, controladores, lógica de negocio por módulo y convenciones usadas. Es el complemento operativo del TRD.
@@ -17,7 +17,8 @@ app/
 │   ├── Coupon.php, CouponUse.php
 │   ├── Cart.php, CartItem.php
 │   ├── Order.php, OrderItem.php
-│   └── Conversation.php, Message.php
+│   ├── Conversation.php, Message.php
+│   ├── Setting.php, Banner.php, Benefit.php
 ├── Http/
 │   ├── Controllers/
 │   │   ├── HomeController.php          → Home + Acerca de
@@ -40,12 +41,15 @@ app/
 │   │       ├── UserController.php
 │   │       ├── CouponController.php    → CRUD de cupones
 │   │       ├── ReviewController.php    → Moderación de reseñas
-│   │       └── MessageController.php   → Chat de soporte (lado staff)
+│   │       ├── MessageController.php   → Chat de soporte (lado staff)
+│   │       ├── BannerController.php    → CRUD de banners del carrusel
+│   │       ├── BenefitController.php   → CRUD de beneficios del home
+│   │       └── SettingController.php   → Formulario de configuración global
 │   └── Middleware/
 │       └── EnsureUserHasRole.php       → alias 'role'
 database/
 ├── migrations/                          → una tabla por archivo, orden cronológico
-└── seeders/                             → UserSeeder, CategorySeeder, ProductSeeder, ReviewSeeder (WishlistSeeder no incluido — los datos se crean dinámicamente)
+└── seeders/                             → UserSeeder, CategorySeeder, ProductSeeder, ReviewSeeder, SiteSeeder (banners, beneficios iniciales)
 routes/
 └── web.php                              → única fuente de rutas del sistema
 resources/views/
@@ -77,10 +81,11 @@ resources/views/
 
 ### 3.2 Checkout (`CheckoutController`)
 - Solo opera sobre el carrito del usuario autenticado (`Cart::where('user_id', Auth::id())`).
+- **Direcciones guardadas:** carga las direcciones del usuario (`Address::where('user_id', Auth::id())`) y las pasa a la vista. El usuario puede seleccionar una existente (radio button) o ingresar una nueva. Si selecciona "Guardar dirección para futuras compras", se crea un registro en `addresses` automáticamente al confirmar el pedido.
 - Si `payment_method=tarjeta` y llega `culqi_token`, **antes de la transacción** se hace un cargo a la API de Culqi (`POST /v2/charges`). Si el cargo falla, se devuelve error y **no** se crea el Order ni se vacía el carrito. Si es exitoso, se preparan los campos `culqi_charge_id`, `payment_status=pagado`, `paid_at=now()` para crear el Order con `status=pagado`.
 - `store()` ejecuta dentro de una transacción de base de datos (`DB::transaction`):
   1. Calcula subtotal desde los `cart_items`.
-  2. Calcula envío: `0` si subtotal ≥ 200, si no `15` (valores hardcodeados, no configurables desde el panel — candidato a mover a una tabla de configuración).
+   2. Calcula envío: `0` si subtotal ≥ `shipping_min_amount`, si no `shipping_cost` (valores leídos dinámicamente desde la tabla `settings`, editables desde el panel admin → Configuración general).
   3. Crea el `Order` con número único `RAR-` + 8 caracteres aleatorios. Si el pago fue por Culqi, el estado inicial es `pagado`.
   4. Por cada `cart_item`, crea un `OrderItem` (snapshot de nombre y precio) y descuenta `stock` del `Product`.
   5. Vacía el carrito (`$cart->items()->delete()`).
@@ -92,11 +97,32 @@ resources/views/
 
 **Campos nuevos en tabla `orders`:** `culqi_charge_id` (string nullable), `payment_status` (string default 'pendiente'), `paid_at` (timestamp nullable).
 
-### 3.3 Catálogo público (`ProductController`)
-- Filtros combinables vía query string: `q` (búsqueda por nombre, `ilike`), `category` (por slug), `brand`, `min_price`, `max_price`.
+### 3.3 Catálogo público + Búsqueda (`ProductController` + `SearchController`)
+- Filtros combinables vía query string: `q` (búsqueda por nombre con tolerancia a errores), `category` (por slug), `brand`, `min_price`, `max_price`.
 - Ordenamiento (`sort`): `price_asc`, `price_desc`, `name`, o por defecto `latest()`.
 - Paginación: 12 productos por página, con `withQueryString()` para conservar filtros al cambiar de página.
 - Solo se listan productos con `active = true`.
+
+#### Búsqueda con tolerancia a errores de tipeo
+- Se usa la extensión `pg_trgm` de PostgreSQL (trigramas) para búsqueda por similitud.
+- Migración `2026_07_28_000011_create_search_indexes`: habilita `pg_trgm` y crea índices GIN en `products.name` y `products.brand`.
+- En `ProductController@index`, cuando se filtra por `q`:
+  1. Primero busca coincidencias con `ilike '%query%'` (coincidencia exacta parcial).
+  2. Luego aplica `similarity(name, 'query') > 0.25` para errores de tipeo (ej. "celuar" → "celular").
+  3. También busca por marca con `similarity(brand, 'query') > 0.3`.
+  4. Ordena por: primero los que empiezan con la query exacta, luego por similitud descendente.
+- El umbral de similitud (0.25) permite errores de 1-2 caracteres en palabras cortas.
+
+#### Autocompletado con sugerencias (`SearchController`)
+- Endpoint AJAX público: `GET /buscar/sugerencias?q=...` retorna JSON agrupado en 3 secciones:
+  - **Productos** (hasta 6): nombre, precio, imagen, marca, slug. Usa `similarity()` para tolerancia.
+  - **Categorías** (hasta 3): nombre con ícono, slug.
+  - **Marcas** (hasta 3): nombre de marca.
+- Frontend implementado con Alpine.js en el navbar (`layouts/app.blade.php`):
+  - Input con `x-model` y `@input.debounce.250ms` para evitar llamadas excesivas.
+  - Dropdown con 3 secciones (Productos, Categorías, Marcas) con íconos, precios e imágenes.
+  - Se cierra al hacer clic fuera (`@click.outside`).
+  - Requiere mínimo 2 caracteres para disparar la búsqueda.
 
 ### 3.4 Panel administrativo — Productos (`Admin\ProductController`)
 - `validateData()` centraliza las reglas de validación para `store()` y `update()`.
@@ -128,7 +154,20 @@ Se usa como `role:admin,trabajador` o `role:admin` en las rutas. Acepta múltipl
 
 ---
 
-### 3.8 Páginas legales (`LegalController`)
+### 3.8 Páginas legales y de ayuda (`LegalController`)
+- Métodos: `privacyPolicy()`, `termsConditions()`, `shippingReturns()`.
+- `shippingReturns()`: carga las FAQs activas desde la tabla `faqs` y pasa a la vista `legal.shipping-returns`.
+- Vista con 3 secciones: información de envío (desde `settings.shipping_info`), política de devoluciones (desde `settings.returns_policy`) y acordeón de preguntas frecuentes (desde tabla `faqs`), con Alpine.js para el comportamiento colapsable.
+- Rutas: `/politica-de-privacidad`, `/terminos-y-condiciones`, `/envio-y-devoluciones` (públicas, sin middleware).
+- Enlace "Envío y Devoluciones" en navbar y footer de la tienda pública.
+
+**Modelo `Faq` (`app/Models/Faq.php`):**
+- `fillable`: question, answer, category, sort_order, active.
+- `casts`: active → boolean.
+- Scopes: `active()`, `ordered()`.
+- Admin CRUD vía `Admin\FaqController`: vista con tabla + formulario inline de creación + modal Alpine.js para edición (mismo patrón que `BenefitController`).
+- 6 FAQs demo insertadas en la migración (envío, pago, devolución, general).
+- Las FAQs se administran desde el panel admin → Configuración de tienda → ❓ FAQ / Ayuda.
 - Controlador liviano con dos métodos: `privacyPolicy()` y `termsConditions()`, cada uno retorna su vista correspondiente.
 - Rutas públicas (sin middleware): `/politica-de-privacidad` y `/terminos-y-condiciones`.
 - Vistas en `resources/views/legal/`: `privacy-policy.blade.php` y `terms-conditions.blade.php`.
@@ -253,7 +292,44 @@ Además, cuando el usuario está autenticado, comparte `$wishlistCount` con toda
 
 ---
 
-### 3.14 Cupones de descuento (`CouponController` + `Admin\CouponController`)
+### 3.14 Configuración de tienda (banners, beneficios, settings)
+
+Se implementaron tres nuevas entidades para hacer administrable todo el contenido del storefront desde el panel:
+
+**Modelo `Setting` (`app/Models/Setting.php`):**
+- Tabla clave-valor (`key` único, `value` texto).
+- Métodos estáticos: `getValue(key, default)` y `setValue(key, value)` para acceso rápido desde cualquier parte del sistema (controladores y vistas).
+- Valores almacenados: top_bar_text, footer_description/address/phone/email, shipping_min_amount, shipping_cost, about_mission/vision/values/about_subtitle, about_clients_count/products_count/regions_count/rating, home_title_categories/featured/newest, store_logo/logo_icon (rutas de imagen), store_ruc/business_name/address/phone/email.
+- Los valores por defecto se insertan en la migración. Si una key no existe en BD, los helpers en las vistas usan `Setting::getValue('key', 'default literal')` para no romper el frontend.
+- Admin: `SettingController@index` (formulario único con todas las secciones) + `SettingController@update` (recorre las keys validadas y ejecuta `Setting::setValue()`). Soporta subida de imágenes para `store_logo` y `store_logo_icon` (se guardan en `storage/app/public/store/`).
+- Settings adicionales: `shipping_info` y `returns_policy` (texto largo para la página de Envío y Devoluciones).
+- Las imágenes de logo se renderizan con fallback a `asset('images/...')` si el valor comienza con `images/` (archivos default del proyecto), o a `asset('storage/...')` si fueron subidas por el admin.
+
+**Modelo `Banner` (`app/Models/Banner.php`):**
+- Campos: title, subtitle, button_text, button_url, image (ruta de storage), gradient_from, gradient_to, text_color, sort_order, active.
+- Scopes: `active()` (filtra `active = true`), `ordered()` (ordena por `sort_order`).
+- CRUD completo via `Admin\BannerController` con subida de imagen a `storage/app/public/banners/`.
+- Vista admin con tabla + formularios create/edit con preview de imagen actual.
+- Frontend: `home.blade.php` consume `$banners` y renderiza cada slide dinámicamente con Alpine.js. Si no hay banners, muestra un placeholder.
+
+**Modelo `Benefit` (`app/Models/Benefit.php`):**
+- Campos: icon (emoji), title, sort_order, active.
+- Scopes: `active()`, `ordered()`.
+- CRUD via `Admin\BenefitController`: index con tabla + formulario inline de creación + modal Alpine.js para edición.
+- Frontend: `home.blade.php` consume `$benefits` y renderiza la grilla dinámicamente.
+
+**Sidebar admin:**
+Se agregó una sección "Configuración de tienda" en el admin layout como dropdown colapsable (Alpine.js) con 3 sub-enlaces: Banners/Carrusel, Beneficios, Configuración general.
+
+**Rutas admin nuevas:**
+```
+GET|POST  admin/banners/*           → Admin\BannerController (resource completo)
+GET|POST  admin/benefits/*          → Admin\BenefitController (index, store, update, destroy)
+GET       admin/settings            → Admin\SettingController@index
+POST      admin/settings            → Admin\SettingController@update
+```
+
+### 3.15 Cupones de descuento (`CouponController` + `Admin\CouponController`)
 
 **Modelo `Coupon` (`app/Models/Coupon.php`):**
 - `fillable`: todos los campos editables (code, type, value, category_id, min_purchase, max_discount, usage_limit, usage_count, usage_limit_per_user, starts_at, expires_at, active).
@@ -299,6 +375,44 @@ Además, cuando el usuario está autenticado, comparte `$wishlistCount` con toda
 - `Admin\DashboardController`: consulta `Coupon::where('active', true)->where('expires_at', '>=', now()...)` para contar cupones activos vigentes. Se muestra como una tarjeta más en el grid de estadísticas.
 - Sidebar del admin incluye enlace "🏷️ Cupones" apuntando a `route('admin.coupons.index')`.
 
+### 3.16 Recuperación de carrito abandonado
+
+**Tabla `carts`:**
+- Nuevo campo `last_active_at` (timestamp, nullable) — se actualiza cada vez que el usuario interactúa con su carrito (desde `CartController` y desde el View Composer en `AppServiceProvider`).
+- Método `Cart::touchLastActive()`: `$this->update(['last_active_at' => now()])`.
+
+**Mailable `AbandonedCartMail` (`app/Mail/AbandonedCartMail.php`):**
+- Implementa `ShouldQueue` para envío asíncrono.
+- Usa el layout compartido `emails/layout.blade.php`.
+- Incluye tabla con productos del carrito, cantidades, precios unitarios y total.
+- Botón CTA "Recuperar mi carrito" que apunta a `route('cart.index')`.
+- Asunto configurable desde el panel admin (`abandoned_cart_subject`).
+
+**Command `rar:send-abandoned-carts` (`app/Console/Commands/SendAbandonedCartReminders.php`):**
+- Lee `abandoned_delay_hours` de `settings` (default 24h).
+- Busca carritos con `user_id` no nulo, con ítems, con `last_active_at` anterior al corte.
+- Excluye carritos donde algún producto esté inactivo.
+- Por cada carrito, envía `AbandonedCartMail` a la cola y actualiza `last_active_at` a `now()` para evitar reenvíos.
+- Se ejecuta cada hora vía scheduler (`routes/console.php`):
+  ```php
+  Schedule::command('rar:send-abandoned-carts')->hourly();
+  ```
+
+**Settings nuevas:**
+| Key | Default | Descripción |
+|---|---|---|
+| `abandoned_delay_hours` | `24` | Horas sin actividad para considerar carrito abandonado |
+| `abandoned_cart_subject` | `¡No olvides tu carrito! Tienes productos esperándote` | Asunto del correo de recuperación |
+
+**Configuración en el panel admin:**
+Sección "🛒 Recuperación de carrito abandonado" dentro de Configuración general, con campos para horas de abandono y asunto del correo.
+
+**Requisito de infraestructura:**
+Requiere un worker de cola corriendo (`php artisan queue:work`) y el scheduler configurado en el cron del servidor:
+```
+* * * * * cd /ruta/del/proyecto && php artisan schedule:run >> /dev/null 2>&1
+```
+
 ---
 
 ## 5. Puntos de extensión previstos (dónde engancharía cada feature futura)
@@ -310,8 +424,19 @@ Además, cuando el usuario está autenticado, comparte `$wishlistCount` con toda
 | Reportes exportables | Nuevo controlador `Admin\ReportController`, reutilizando las queries ya existentes en `DashboardController` |
 | Reseñas de productos | Tabla `reviews` implementada — ver sección 3.12 y migración `create_reviews_table` |
 | Lista de deseos (wishlist) | Tabla `wishlists` implementada — ver sección 3.13. Además, esta tabla es la fuente de datos recomendada para una futura campaña de remarketing por correo ("productos que dejaste en tu lista") |
-| Cupones/descuentos | Tabla `coupons` implementada — ver sección 3.14. Incluye CRUD admin, aplicación AJAX en checkout, doble validación server-side y registro de usos (`coupon_uses`) |
+| Cupones/descuentos | Tabla `coupons` implementada — ver sección 3.15. Incluye CRUD admin, aplicación AJAX en checkout, doble validación server-side y registro de usos (`coupon_uses`) |
 | Chat en tiempo real | Sustituir el modelo actual de `Message` por broadcasting de Laravel (Reverb/Pusher) sobre los mismos modelos `Conversation`/`Message` |
+| Contenido dinámico del storefront | Banners, beneficios, config de envío, footer, acerca de y títulos del home ahora son administrables desde el panel (tablas `settings`, `banners`, `benefits`) |
+| Múltiples direcciones por cliente | Tabla `addresses` implementada. Los clientes gestionan sus direcciones desde `/mis-direcciones` y pueden seleccionar una guardada en el checkout |
+| Timeline visual de pedidos | Tabla `order_statuses` inmutable. Cada cambio de estado (`pendiente`/`pagado`/`enviado`/`entregado`/`cancelado`) se registra con timestamp automáticamente desde `CheckoutController@store` y `Admin\OrderController@updateStatus`. La vista `partials/order-timeline` renderiza una línea de tiempo vertical con íconos. Disponible en el detalle del pedido (`/mis-pedidos/{order}`) y en el admin (`admin/orders/{order}`) |
+| Comparador de productos | `CompareController` — sesión (`comparison`), máx 4 productos de la misma categoría. Vista `compare/index.blade.php` con tabla lado a lado de specs (`attributes` JSON), precio, stock, rating y botón "Agregar al carrito". Botón "Comparar" en cada `product-card` y en ficha de producto. Enlace en navbar |
+| Chat en tiempo real | ContactController y Admin\MessageController exponen endpoints JSON (`/contactanos/mensajes`, `/admin/messages/{conv}/messages`) para polling cada 3s vía Alpine.js. Envío de mensajes AJAX sin recarga. Marca mensajes como leídos automáticamente |
+| SEO técnico | Meta tags dinámicos OG/Twitter por producto, JSON-LD Schema.org Product con precio, disponibilidad y rating, sitemap.xml dinámico en `/sitemap.xml`, campos `meta_title`/`meta_description` editables desde el panel de productos |
+| Newsletter | Tabla `newsletters` con email único + nombre opcional + active. Formulario de suscripción en el footer con Alpine.js AJAX. Admin: listado, eliminación y exportación de emails a .txt |
+| Programa de puntos fidelización | Columnas `loyalty_points`/`lifetime_points` en `users` + tabla `loyalty_transactions`. Los puntos se acreditan automáticamente al marcar pedido como "Entregado" (tasa configurable: `points_earning_rate`). El cliente puede canjear en checkout (tasa: `points_redeem_rate`, mínimo: `min_points_to_redeem`). Vista `/mis-puntos` con saldo e historial. Badge en navbar |
+| Social Login | Laravel Socialite (v5.x) — login/registro con Google y Facebook. Botones en login y registro. Tabla `social_accounts` (user_id, provider, provider_id, avatar). Redirige al home post-login |
+| Recuperación de carrito abandonado | Comando `rar:send-abandoned-carts` + `AbandonedCartMail` implementado — ver sección 3.16. Envía correo automático con productos del carrito y CTA a recuperar compra |
+| Búsqueda con tolerancia a errores | `pg_trgm` + autocompletado Alpine.js implementado — ver sección 3.3. Búsqueda por similitud con índices GIN |
 
 ---
 
@@ -328,9 +453,16 @@ php artisan storage:link
 # Desarrollo
 php artisan serve
 php artisan migrate:fresh --seed   # reiniciar BD desde cero con datos demo
+php artisan rar:send-abandoned-carts  # probar recuperación de carritos abandonados
+
+# Cola de correos (requerido para OrderConfirmationMail, OrderStatusUpdatedMail y AbandonedCartMail)
+php artisan queue:work
 
 # Producción
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
+
+# Programar en cron del servidor:
+# * * * * * cd /ruta/proyecto && php artisan schedule:run >> /dev/null 2>&1
 ```
