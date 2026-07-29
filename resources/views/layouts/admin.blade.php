@@ -79,5 +79,6 @@
         </main>
     </div>
 </div>
+@include('partials.assistant-chat')
 </body>
 </html>

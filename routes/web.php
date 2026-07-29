@@ -52,6 +52,19 @@ Route::get('/politica-de-privacidad', [LegalController::class, 'privacyPolicy'])
 Route::get('/terminos-y-condiciones', [LegalController::class, 'termsConditions'])->name('terms-conditions');
 Route::get('/envio-y-devoluciones', [LegalController::class, 'shippingReturns'])->name('shipping-returns');
 
+// ---------- Asistente RaR ----------
+Route::middleware('auth')->prefix('asistente')->name('assistant.')->group(function () {
+    Route::get('conversaciones', [\App\AssistantRAR\Controllers\AssistantController::class, 'conversations'])->name('conversations');
+    Route::post('conversaciones', [\App\AssistantRAR\Controllers\AssistantController::class, 'createConversation'])->name('conversations.create');
+    Route::get('conversaciones/{id}', [\App\AssistantRAR\Controllers\AssistantController::class, 'getConversation'])->name('conversations.get');
+    Route::delete('conversaciones/{id}', [\App\AssistantRAR\Controllers\AssistantController::class, 'deleteConversation'])->name('conversations.delete');
+    Route::post('conversaciones/{id}/mensaje', [\App\AssistantRAR\Controllers\AssistantController::class, 'sendMessage'])->name('send');
+    Route::post('conversaciones/{id}/stream', [\App\AssistantRAR\Controllers\AssistantController::class, 'streamMessage'])->name('stream');
+    Route::get('memorias', [\App\AssistantRAR\Controllers\AssistantController::class, 'memories'])->name('memories');
+    Route::post('memorias', [\App\AssistantRAR\Controllers\AssistantController::class, 'saveMemory'])->name('memories.save');
+    Route::delete('memorias/{key}', [\App\AssistantRAR\Controllers\AssistantController::class, 'deleteMemory'])->name('memories.delete');
+});
+
 // ---------- Carrito (invitados y clientes) ----------
 Route::get('/carrito', [CartController::class, 'index'])->name('cart.index');
 Route::post('/carrito/agregar/{product}', [CartController::class, 'add'])->name('cart.add');

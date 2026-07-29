@@ -37,6 +37,18 @@ Plataforma de e-commerce completa con panel administrativo, construida en Larave
 - **Configuración dinámica**: envío, puntos, redes sociales, etc.
 - Gestión de usuarios y trabajadores (solo `admin`)
 
+### 🤖 Asistente RaR (inteligente)
+- Chat flotante accesible desde cualquier página (admin y tienda)
+- Integración con Groq (LLaMA 3.3) — configurable a OpenAI, Gemini, Claude, etc.
+- Streaming de respuestas en tiempo real (SSE)
+- Contexto automático: reconoce usuario, rol, permisos, página actual, historial y memoria
+- **41 herramientas** por rol: productos, categorías, pedidos, usuarios, inventario, reportes
+- Confirmación obligatoria para acciones destructivas (nivel 1 y 2)
+- Auditoría completa de cada acción ejecutada (`assistant_tool_logs`)
+- Memoria persistente aislada por usuario
+- ProviderManager desacoplado: cambiar de IA sin modificar el sistema
+- Requiere `ASSISTANT_API_KEY` en `.env` para funcionar
+
 ### Roles del sistema
 - `admin`: acceso total al panel, incluida gestión de usuarios
 - `trabajador`: acceso a productos, pedidos, mensajes, inventario, reportes (sin usuarios)
@@ -110,11 +122,12 @@ CULQI_SECRET_KEY=sk_test_xxx
 
 ```
 app/
+├── AssistantRAR/           → Módulo Asistente RaR (Controllers, Services, Models, Tools, Providers)
 ├── Http/Controllers/       → Shop (Home, Product, Cart, Checkout, Contact, Compare, etc.)
 │   ├── Admin/              → Dashboard, Products, Orders, Inventory, Reports, Variants, etc.
 │   └── Auth/               → Login, Register, Password Reset, Socialite
 ├── Models/                 → User, Product, Order, Cart, ProductVariant, StockMovement, etc.
-├── Services/               → StockService
+├── Services/               → StockService, ProductService, OrderService, UserService, etc. (usados por el asistente)
 └── Mail/                   → OrderConfirmationMail, OrderStatusUpdatedMail, AbandonedCartMail
 database/migrations/        → ~30 migraciones
 resources/views/            → Vistas Blade (shop + admin)
@@ -132,6 +145,9 @@ La documentación técnica completa está en `negocios-rar-docs/`:
 - `05-BACKEND.md` — Implementación backend detallada
 - `06-CONTEXTO-PARA-IA.md` — Contexto obligatorio antes de modificar el sistema
 - `07-SEGURIDAD.md` — Políticas de seguridad
+- `08-ASISTENTE-RAR.md` — Visión, filosofía y arquitectura del Asistente RaR
+- `09-PROMPTS-IMPLEMENTACION-Asistente.md` — Plan de implementación en 23 fases
+- `11-HERRAMIENTAS-ASISTENTE-RAR.md` — Catálogo completo de herramientas (~150)
 
 ---
 

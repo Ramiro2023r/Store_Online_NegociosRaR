@@ -1,6 +1,22 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/laravel/compare/v13.8.0...13.x)
+## [Unreleased]
+
+### Módulo Asistente RaR (v1.0)
+- Implementación completa del asistente inteligente (Fases 1-22 del plan)
+- 7 migraciones: `assistant_conversations`, `assistant_messages`, `assistant_tool_logs`, `assistant_preferences`, `assistant_sessions`, `assistant_memories`, `assistant_feedback`
+- Arquitectura modular `app/AssistantRAR/` con Contracts, Services, Models, Tools, Providers
+- Chat flotante Alpine.js con historial, streaming SSE, responsive, toggle
+- Integración con Groq (ProviderManager con soporte OpenAI como fallback)
+- ContextService enriquecido: usuario, rol, permisos, empresa, fecha/hora, historial, memoria, herramientas disponibles
+- 7 Services de aplicación: ProductService, CategoryService, BrandService, InventoryService, OrderService, UserService, ReportService
+- 41 herramientas concretas registradas automáticamente con roles y niveles de confirmación
+- BaseTool abstracto con helpers para creación de herramientas
+- ToolExecutor con logging completo a `assistant_tool_logs`
+- Memoria persistente aislada por usuario
+- Cache de company info (3600s)
+- Tests: AssistantChatTest (Feature) + ContextServiceTest (Unit)
+- Documentación técnica actualizada
 
 ## [v13.8.0](https://github.com/laravel/laravel/compare/v13.7.0...v13.8.0) - 2026-05-25
 

@@ -288,5 +288,6 @@
             &nbsp;|&nbsp; <a href="{{ route('terms-conditions') }}" class="hover:text-white">Términos y Condiciones</a>
         </div>
     </footer>
+@include('partials.assistant-chat')
 </body>
 </html>
